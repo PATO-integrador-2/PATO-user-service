@@ -57,6 +57,7 @@ func main() {
 			users.POST("/verify-email", usersHandler.VerifyEmail)
 			users.POST("/login", usersHandler.Login)
 			users.POST("/forgot-password", usersHandler.ForgotPassword)
+			users.POST("/verify-reset-token", usersHandler.VerifyResetToken)
 			users.POST("/reset-password", usersHandler.ResetPassword)
 
 			protected := users.Group("")

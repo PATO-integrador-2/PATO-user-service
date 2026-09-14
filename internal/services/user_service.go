@@ -340,14 +340,23 @@ func (s *UserService) ForgotPassword(email string) error {
 	return nil
 }
 
-func (s *UserService) ResetPassword(req *dto.ResetPasswordRequest) error {
-	if err := utils.ValidatePassword(req.Password); err != nil {
-		return err
-	}
+const passwordResetSessionTTL = 10 * time.Minute
 
-	tokenHash := utils.HashToken(req.Token)
+func passwordResetKey(tokenHash string) string {
+	return fmt.Sprintf("password_reset:%s", tokenHash)
+}
 
-	key := fmt.Sprintf("password_reset:%s", tokenHash)
+func passwordResetSessionKey(tokenHash string) string {
+	return fmt.Sprintf("password_reset_session:%s", tokenHash)
+}
+
+// VerifyResetToken valida el código recibido por correo y, si es válido,
+// lo consume y emite un reset_token de sesión de un solo uso que el
+// cliente usará en ResetPassword sin tener que reenviar el código.
+func (s *UserService) VerifyResetToken(token string) (string, error) {
+	tokenHash := utils.HashToken(token)
+
+	key := passwordResetKey(tokenHash)
 
 	userID, err := s.Valkey.Get(
 		context.Background(),
@@ -355,11 +364,60 @@ func (s *UserService) ResetPassword(req *dto.ResetPasswordRequest) error {
 	).Result()
 
 	if err == redis.Nil {
-		return fmt.Errorf("invalid or expired token")
+		return "", fmt.Errorf("invalid or expired token")
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to retrieve reset token: %w", err)
+		return "", fmt.Errorf("failed to retrieve reset token: %w", err)
+	}
+
+	resetToken, err := utils.GenerateSessionToken()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate reset session token: %w", err)
+	}
+
+	resetTokenHash := utils.HashToken(resetToken)
+
+	if err := s.Valkey.Set(
+		context.Background(),
+		passwordResetSessionKey(resetTokenHash),
+		userID,
+		passwordResetSessionTTL,
+	).Err(); err != nil {
+		return "", fmt.Errorf("failed to store reset session token: %w", err)
+	}
+
+	// El código enviado por correo solo puede verificarse una vez.
+	if err := s.Valkey.Del(
+		context.Background(),
+		key,
+	).Err(); err != nil {
+		return "", fmt.Errorf("failed to invalidate reset token: %w", err)
+	}
+
+	return resetToken, nil
+}
+
+func (s *UserService) ResetPassword(req *dto.ResetPasswordRequest) error {
+	if err := utils.ValidatePassword(req.Password); err != nil {
+		return err
+	}
+
+	resetTokenHash := utils.HashToken(req.ResetToken)
+
+	key := passwordResetSessionKey(resetTokenHash)
+
+	userID, err := s.Valkey.Get(
+		context.Background(),
+		key,
+	).Result()
+
+	if err == redis.Nil {
+		return fmt.Errorf("invalid or expired reset token")
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to retrieve reset session token: %w", err)
 	}
 
 	hashedPassword, err := utils.HashPassword(req.Password)
@@ -373,12 +431,12 @@ func (s *UserService) ResetPassword(req *dto.ResetPasswordRequest) error {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
-	// El token solo puede utilizarse una vez.
+	// El reset_token solo puede utilizarse una vez.
 	if err := s.Valkey.Del(
 		context.Background(),
 		key,
 	).Err(); err != nil {
-		return fmt.Errorf("failed to invalidate reset token: %w", err)
+		return fmt.Errorf("failed to invalidate reset session token: %w", err)
 	}
 
 	return nil
