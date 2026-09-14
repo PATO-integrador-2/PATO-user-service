@@ -467,7 +467,67 @@ POST /api/v1/users/forgot-password
 
 La respuesta es siempre la misma exista o no el correo, para evitar filtrar qué correos están registrados.
 
-## 13.2 Reset Password
+## 13.2 Verify Reset Token
+
+Valida el código recibido por correo y, si es correcto, lo **consume** (uso único) y emite un `reset_token` de sesión (TTL 10 min) que el cliente usará en el paso siguiente para cambiar la contraseña **sin reenviar el código original**.
+
+```text
+POST /api/v1/users/verify-reset-token
+```
+
+### Body
+
+```json
+{
+    "token": "CODIGO_RECIBIDO"
+}
+```
+
+### Flujo (`UserService.VerifyResetToken`)
+
+```text
+POST /api/v1/users/verify-reset-token
+          │
+          ▼
+   UserService.VerifyResetToken()
+          │
+          ├── Buscar código en Valkey ("password_reset:<hash>")
+          │      └── No existe / expirado → error
+          │
+          ├── Generar reset_token de sesión (opaco)
+          │
+          ├── Guardar hash en Valkey ("password_reset_session:<hash>", TTL 10 min) → userID
+          │
+          └── Eliminar el código original de Valkey (uso único)
+                    │
+                    ▼
+              Respuesta HTTP
+```
+
+### Respuesta exitosa
+
+```json
+{
+    "valid": true,
+    "reset_token": "RESET_TOKEN_DE_SESION",
+    "message": "Token is valid"
+}
+```
+
+### Respuesta si el código es inválido o expiró
+
+```json
+{
+    "error": "invalid or expired token",
+    "code": "INVALID_RESET_TOKEN"
+}
+```
+
+HTTP `400 Bad Request`.
+
+## 13.3 Reset Password
+
+Cambia la contraseña usando el `reset_token` de sesión obtenido en `verify-reset-token`. Ya no se envía el código original.
 
 ```text
 POST /api/v1/users/reset-password
@@ -477,7 +537,7 @@ POST /api/v1/users/reset-password
 
 ```json
 {
-    "token": "CODIGO_RECIBIDO",
+    "reset_token": "RESET_TOKEN_DE_SESION",
     "password": "NuevaPassword456!",
     "confirm_password": "NuevaPassword456!"
 }
@@ -493,14 +553,14 @@ POST /api/v1/users/reset-password
           │
           ├── Validar complejidad de la nueva contraseña
           │
-          ├── Buscar token en Valkey ("password_reset:<hash>")
+          ├── Buscar reset_token en Valkey ("password_reset_session:<hash>")
           │      └── No existe / expirado → error
           │
           ├── Hashear la nueva contraseña (BCrypt)
           │
           ├── Actualizar password_hash en base de datos
           │
-          └── Eliminar el token de Valkey (uso único)
+          └── Eliminar el reset_token de Valkey (uso único)
                     │
                     ▼
               Respuesta HTTP
@@ -726,6 +786,7 @@ Tras hacer logout    → 401 Unauthorized (aunque el TTL no haya vencido)
 | `POST`  | `/api/v1/users/verify-email`       | Verificar correo                     | No             |
 | `POST`  | `/api/v1/users/login`              | Iniciar sesión y obtener token       | No             |
 | `POST`  | `/api/v1/users/forgot-password`    | Solicitar recuperación de contraseña | No             |
+| `POST`  | `/api/v1/users/verify-reset-token` | Verificar que el token de recuperación sea válido | No |
 | `POST`  | `/api/v1/users/reset-password`     | Reestablecer contraseña con token    | No             |
 | `GET`   | `/api/v1/users`                    | Listar todos los usuarios            | Sesión         |
 | `GET`   | `/api/v1/users/me`                 | Obtener datos del usuario autenticado | Sesión        |

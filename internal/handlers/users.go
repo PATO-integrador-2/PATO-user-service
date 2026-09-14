@@ -417,6 +417,43 @@ func (h *UsersHandler) ForgotPassword(c *gin.Context) {
 	})
 }
 
+func (h *UsersHandler) VerifyResetToken(c *gin.Context) {
+	var req dto.VerifyResetTokenRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error:       "Invalid request format",
+			Code:        "INVALID_REQUEST",
+			Description: err.Error(),
+		})
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error:       "Validation failed",
+			Code:        "VALIDATION_ERROR",
+			Description: err.Error(),
+		})
+		return
+	}
+
+	resetToken, err := h.userService.VerifyResetToken(req.Token)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error: err.Error(),
+			Code:  "INVALID_RESET_TOKEN",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"valid":       true,
+		"reset_token": resetToken,
+		"message":     "Token is valid",
+	})
+}
+
 func (h *UsersHandler) ResetPassword(c *gin.Context) {
 	var req dto.ResetPasswordRequest
 
