@@ -340,6 +340,45 @@ func (s *UserService) ForgotPassword(email string) error {
 	return nil
 }
 
+// ResendVerificationEmail genera un nuevo código de verificación y lo reenvía
+// al correo indicado, invalidando cualquier código anterior. No revela si el
+// correo está registrado ni si ya fue verificado.
+func (s *UserService) ResendVerificationEmail(email string) error {
+	var user models.User
+
+	if err := s.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	if user.EmailVerified {
+		return nil
+	}
+
+	code, err := utils.GenerateNumericCode()
+	if err != nil {
+		return fmt.Errorf("failed to generate verification code: %w", err)
+	}
+
+	if err := s.Valkey.Set(
+		context.Background(),
+		verificationCodeKey(user.Email),
+		code,
+		emailVerificationTokenTTL,
+	).Err(); err != nil {
+		return fmt.Errorf("failed to store verification token: %w", err)
+	}
+
+	if err := s.EmailService.SendVerificationEmail(user.Username, user.Email, code); err != nil {
+		return fmt.Errorf("failed to send verification email: %w", err)
+	}
+
+	return nil
+}
+
 const passwordResetSessionTTL = 10 * time.Minute
 
 func passwordResetKey(tokenHash string) string {

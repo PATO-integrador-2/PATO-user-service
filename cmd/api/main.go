@@ -55,6 +55,7 @@ func main() {
 		{
 			users.POST("/register", usersHandler.Register)
 			users.POST("/verify-email", usersHandler.VerifyEmail)
+			users.POST("/resend-verification", usersHandler.ResendVerification)
 			users.POST("/login", usersHandler.Login)
 			users.POST("/forgot-password", usersHandler.ForgotPassword)
 			users.POST("/verify-reset-token", usersHandler.VerifyResetToken)

@@ -417,6 +417,40 @@ func (h *UsersHandler) ForgotPassword(c *gin.Context) {
 	})
 }
 
+func (h *UsersHandler) ResendVerification(c *gin.Context) {
+	var req dto.ResendVerificationRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error:       "Invalid request format",
+			Code:        "INVALID_REQUEST",
+			Description: err.Error(),
+		})
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error:       "Validation failed",
+			Code:        "VALIDATION_ERROR",
+			Description: err.Error(),
+		})
+		return
+	}
+
+	if err := h.userService.ResendVerificationEmail(req.Email); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
+			Error: err.Error(),
+			Code:  "VERIFICATION_RESEND_FAILED",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "If the email is registered and not yet verified, a verification code has been sent",
+	})
+}
+
 func (h *UsersHandler) VerifyResetToken(c *gin.Context) {
 	var req dto.VerifyResetTokenRequest
 

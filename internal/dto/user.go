@@ -63,6 +63,10 @@ type ForgotPasswordRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
 
+type ResendVerificationRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
 type ResetPasswordRequest struct {
 	ResetToken      string `json:"reset_token" validate:"required"`
 	Password        string `json:"password" validate:"required,min=8"`
@@ -74,6 +78,10 @@ type VerifyResetTokenRequest struct {
 }
 
 func (r *ForgotPasswordRequest) Validate() error {
+	return validate.Struct(r)
+}
+
+func (r *ResendVerificationRequest) Validate() error {
 	return validate.Struct(r)
 }
 
