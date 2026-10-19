@@ -43,7 +43,7 @@ type EmailServiceConfig struct {
 	AppBaseURL string
 }
 
-const SessionTTL = 20 * 24 * time.Hour
+const SessionTTL = 15 * 24 * time.Hour
 
 func Load() (*Config, error) {
 	_ = godotenv.Load()
